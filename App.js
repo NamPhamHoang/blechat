@@ -28,7 +28,7 @@ import {
   Colors,
 } from 'react-native/Libraries/NewAppScreen';
 
-import BleManager from "./react-native-ble-manager";
+import BleManager from "react-native-ble-manager/BleManager";
 
 const BleManagerModule = NativeModules.BleManager;
 const bleManagerEmitter = new NativeEventEmitter(BleManagerModule);
@@ -98,8 +98,6 @@ const App: () => Node = () => {
     });
   }
 
-  console.log(list)
-
   const handleUpdateValueForCharacteristic = (data) => {
     console.log('Received data from ' + data.peripheral + ' characteristic ' + data.characteristic, data.value);
   }
@@ -145,12 +143,12 @@ const App: () => Node = () => {
   }
 
   useEffect(() => {
-    BleManager.start({showAlert: false});
+    BleManager.start({showAlert: false})
+    BleManager.enableBluetooth()
     bleManagerEmitter.addListener('BleManagerDiscoverPeripheral', handleDiscoverPeripheral);
     bleManagerEmitter.addListener('BleManagerStopScan', handleStopScan );
     bleManagerEmitter.addListener('BleManagerDisconnectPeripheral', handleDisconnectedPeripheral );
     bleManagerEmitter.addListener('BleManagerDidUpdateValueForCharacteristic', handleUpdateValueForCharacteristic );
-
     if (Platform.OS === 'android' && Platform.Version >= 23) {
       PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION).then((result) => {
           if (result) {
@@ -158,20 +156,24 @@ const App: () => Node = () => {
           } else {
             PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION).then((result) => {
               if (result) {
-                console.log("User accept");
+                console.log("User accept", result);
               } else {
                 console.log("User refuse");
               }
             });
           }
-      });
+      })
+      .catch(err => {
+        console.log(err)
+      })
+      ;
     }  
     return (() => {
       console.log('unmount');
-      bleManagerEmitter.removeAllListeners('BleManagerDiscoverPeripheral');
-      bleManagerEmitter.removeAllListeners('BleManagerStopScan');
-      bleManagerEmitter.removeAllListeners('BleManagerDisconnectPeripheral');
-      bleManagerEmitter.removeAllListeners('BleManagerDidUpdateValueForCharacteristic' );
+      bleManagerEmitter.removeListener('BleManagerDiscoverPeripheral', handleDiscoverPeripheral);
+      bleManagerEmitter.removeListener('BleManagerStopScan', handleStopScan);
+      bleManagerEmitter.removeListener('BleManagerDisconnectPeripheral', handleDisconnectedPeripheral);
+      bleManagerEmitter.removeListener('BleManagerDidUpdateValueForCharacteristic', handleUpdateValueForCharacteristic );
     })
   }, []);
 
