@@ -9,281 +9,213 @@
 import React, { useState, useEffect } from 'react';
 import type {Node} from 'react';
 import {
-  SafeAreaView,
-  StyleSheet,
-  ScrollView,
+  TouchableOpacity,
+  Button,
+  PermissionsAndroid,
   View,
   Text,
-  StatusBar,
-  NativeModules,
-  NativeEventEmitter,
-  Button,
-  Platform,
-  PermissionsAndroid,
-  FlatList,
-  TouchableHighlight,
+  LogBox,
+  StyleSheet
 } from 'react-native';
-
 import {
   Colors,
 } from 'react-native/Libraries/NewAppScreen';
 
-import BleManager from "react-native-ble-manager/BleManager";
+import { BleManager, Device } from 'react-native-ble-plx';
 
-const BleManagerModule = NativeModules.BleManager;
-const bleManagerEmitter = new NativeEventEmitter(BleManagerModule);
+const SERVICE_UUID = '36580ab0-3835-11ed-a261-0242ac120002';
+
+const MESSAGE_UUID = '3e162214-3835-11ed-a261-0242ac120002';
+const BOX_UUID = '43a11040-3835-11ed-a261-0242ac120002';
+
+LogBox.ignoreLogs(['new NativeEventEmitter']); // Ignore log notification by message
+LogBox.ignoreAllLogs();
+const BLTManager = new BleManager();
 
 const App: () => Node = () => {
-  const [isScanning, setIsScanning] = useState(false)
-  const peripherals = new Map();
+  const [isConnected, setIsConnected] = useState(false);
   // const peripherals = new Map();
-  const [listMessage, setListMessage] = useState(["123", "435678"])
-  const [text, onChangeText] = useState("Useless Text");
-  const [list, setList] = useState([])
+  const [message, setMessage] = useState('Nothing Yet');
+  const [connectedDevice, setConnectedDevice] = useState();
 
-  const onAddingMessage = () => {
-    setListMessage([
-      ...listMessage,
-      text
-    ])
-  }
+  async function scanDevices() {
+    PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      {
+        title: 'Permission Localisation Bluetooth',
+        message: 'Requirement for Bluetooth',
+        buttonNeutral: 'Later',
+        buttonNegative: 'Cancel',
+        buttonPositive: 'OK',
+      },
+    ).then(answere => {
+      console.log('scanning');
+      // display the Activityindicator
 
-  const startScan = () => {
-    if (!isScanning) {
-      BleManager.scan([], 10, true).then((results) => {
-        console.log('Scanning...');
-        setIsScanning(true);
-      }).catch(err => {
-        console.error(err);
+      BLTManager.startDeviceScan(null, null, (error, scannedDevice) => {
+        if (error) {
+          console.warn(error);
+        }
+
+        console.log(scannedDevice?.name, scannedDevice?.localName)
+       
+        if (scannedDevice && scannedDevice.name == 'IPhone của Nam') {
+          BLTManager.stopDeviceScan();
+          connectDevice(scannedDevice);
+        }
       });
-    }    
-  }
 
-  const handleDiscoverPeripheral = (peripheral) => {
-    console.log('Got ble peripheral', peripheral);
-    if (!peripheral.name) {
-      peripheral.name = 'NO NAME';
-    }
-    peripherals.set(peripheral.id, peripheral);
-    setList(Array.from(peripherals.values()));
-  }
-
-  const handleStopScan = () => {
-    console.log('Scan is stopped');
-    setIsScanning(false);
-  }
-
-  const handleDisconnectedPeripheral = (data) => {
-    let peripheral = peripherals.get(data.peripheral);
-    if (peripheral) {
-      peripheral.connected = false;
-      peripherals.set(peripheral.id, peripheral);
-      setList(Array.from(peripherals.values()));
-    }
-    console.log('Disconnected from ' + data.peripheral);
-  }
-
-  const retrieveConnected = () => {
-    BleManager.getConnectedPeripherals([]).then((results) => {
-      if (results.length == 0) {
-        console.log('No connected peripherals')
-      }
-      console.log(results);
-      for (var i = 0; i < results.length; i++) {
-        var peripheral = results[i];
-        peripheral.connected = true;
-        peripherals.set(peripheral.id, peripheral);
-        setList(Array.from(peripherals.values()));
-      }
+      // stop scanning devices after 5 seconds
+      // setTimeout(() => {
+      //   BLTManager.stopDeviceScan();
+      // }, 5000);
     });
   }
 
-  const handleUpdateValueForCharacteristic = (data) => {
-    console.log('Received data from ' + data.peripheral + ' characteristic ' + data.characteristic, data.value);
-  }
+  async function connectDevice(device) {
+    console.log('connecting to Device:', device.name);
 
-  const testPeripheral = (peripheral) => {
-    if (peripheral){
-      if (peripheral.connected){
-        BleManager.disconnect(peripheral.id);
-      }else{
-        BleManager.connect(peripheral.id).then(() => {
-          let p = peripherals.get(peripheral.id);
-          if (p) {
-            p.connected = true;
-            peripherals.set(peripheral.id, p);
-            setList(Array.from(peripherals.values()));
-          }
-          console.log('Connected to ' + peripheral.id);
-
-
-          setTimeout(() => {
-
-            /* Test read current RSSI value */
-            BleManager.retrieveServices(peripheral.id).then((peripheralData) => {
-              console.log('Retrieved peripheral services', peripheralData);
-
-              BleManager.readRSSI(peripheral.id).then((rssi) => {
-                console.log('Retrieved actual RSSI value', rssi);
-                let p = peripherals.get(peripheral.id);
-                if (p) {
-                  p.rssi = rssi;
-                  peripherals.set(peripheral.id, p);
-                  setList(Array.from(peripherals.values()));
-                }                
-              });                                          
-            });
-          }, 900);
-        }).catch((error) => {
-          console.log('Connection error', error);
+    device
+      .connect()
+      .then(device => {
+        setConnectedDevice(device);
+        setIsConnected(true);
+        return device.discoverAllServicesAndCharacteristics();
+      })
+      .then(device => {
+        //  Set what to do when DC is detected
+        console.log("device: ", device)
+        BLTManager.onDeviceDisconnected(device.id, (error, device) => {
+          console.log('Device DC');
+          setIsConnected(false);
         });
-      }
-    }
 
+        //Read inital values
+
+        //Message
+        device
+          .readCharacteristicForService(SERVICE_UUID, MESSAGE_UUID)
+          .then(valenc => {
+            setMessage(base64.decode(valenc?.value));
+          });
+
+        //BoxValue
+        device
+          .readCharacteristicForService(SERVICE_UUID, BOX_UUID)
+          .then(valenc => {
+            setBoxValue(StringToBool(base64.decode(valenc?.value)));
+          });
+
+        //monitor values and tell what to do when receiving an update
+
+        //Message
+        device.monitorCharacteristicForService(
+          SERVICE_UUID,
+          MESSAGE_UUID,
+          (error, characteristic) => {
+            if (characteristic?.value != null) {
+              setMessage(base64.decode(characteristic?.value));
+              console.log(
+                'Message update received: ',
+                base64.decode(characteristic?.value),
+              );
+            }
+          },
+          'messagetransaction',
+        );
+
+        //BoxValue
+        device.monitorCharacteristicForService(
+          SERVICE_UUID,
+          BOX_UUID,
+          (error, characteristic) => {
+            if (characteristic?.value != null) {
+              setBoxValue(StringToBool(base64.decode(characteristic?.value)));
+              console.log(
+                'Box Value update received: ',
+                base64.decode(characteristic?.value),
+              );
+            }
+          },
+          'boxtransaction',
+        );
+
+        console.log('Connection established');
+      });
   }
 
-  useEffect(() => {
-    BleManager.start({showAlert: false})
-    BleManager.enableBluetooth()
-    bleManagerEmitter.addListener('BleManagerDiscoverPeripheral', handleDiscoverPeripheral);
-    bleManagerEmitter.addListener('BleManagerStopScan', handleStopScan );
-    bleManagerEmitter.addListener('BleManagerDisconnectPeripheral', handleDisconnectedPeripheral );
-    bleManagerEmitter.addListener('BleManagerDidUpdateValueForCharacteristic', handleUpdateValueForCharacteristic );
-    if (Platform.OS === 'android' && Platform.Version >= 23) {
-      PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION).then((result) => {
-          if (result) {
-            console.log("Permission is OK");
-          } else {
-            PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION).then((result) => {
-              if (result) {
-                console.log("User accept", result);
-              } else {
-                console.log("User refuse");
-              }
-            });
-          }
-      })
-      .catch(err => {
-        console.log(err)
-      })
-      ;
-    }  
-    return (() => {
-      console.log('unmount');
-      bleManagerEmitter.removeListener('BleManagerDiscoverPeripheral', handleDiscoverPeripheral);
-      bleManagerEmitter.removeListener('BleManagerStopScan', handleStopScan);
-      bleManagerEmitter.removeListener('BleManagerDisconnectPeripheral', handleDisconnectedPeripheral);
-      bleManagerEmitter.removeListener('BleManagerDidUpdateValueForCharacteristic', handleUpdateValueForCharacteristic );
-    })
-  }, []);
-
-  const renderItem = (item) => {
-    const color = item.connected ? 'green' : '#fff';
-    return (
-      <TouchableHighlight onPress={() => testPeripheral(item) }>
-        <View style={[styles.row, {backgroundColor: color}]}>
-          <Text style={{fontSize: 12, textAlign: 'center', color: '#333333', padding: 10}}>{item.name}</Text>
-          <Text style={{fontSize: 10, textAlign: 'center', color: '#333333', padding: 2}}>RSSI: {item.rssi}</Text>
-          <Text style={{fontSize: 8, textAlign: 'center', color: '#333333', padding: 2, paddingBottom: 20}}>{item.id}</Text>
-        </View>
-      </TouchableHighlight>
-    );
-  }
+  // useEffect(() => {
+  //   const subscription = BLTManager.onStateChange((state) => {
+  //     console.log(state)
+  //     if(state === "PoweredOn") {
+  //       scanDevices()
+  //       subscription.remove();
+  //     }
+  //   })
+  //   return () => subscription.remove()
+  // }, []);
 
   return (
-    // <>
-    //   {  
-    //     listMessage.map((l, index) => {
-    //       return (
-    //         <Text key={index}>{l}</Text>
-    //       )
-    //     })
-    //   }
-    //   <TextInput
-    //     style={styles.input}
-    //     onChangeText={onChangeText}
-    //     onBlur={onAddingMessage}
-    //     value={text}
-    //   />
-    // </>
-    <>
-    <StatusBar barStyle="dark-content" />
-    <SafeAreaView>
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={styles.scrollView}>
-        {global.HermesInternal == null ? null : (
-          <View style={styles.engine}>
-            <Text style={styles.footer}>Engine: Hermes</Text>
-          </View>
-        )}
-        <View style={styles.body}>
-          
-          <View style={{margin: 10}}>
-            <Button 
-              title={'Scan Bluetooth (' + (isScanning ? 'on' : 'off') + ')'}
-              onPress={() => startScan() } 
-            />            
-          </View>
+    <View>
+      <View style={{paddingBottom: 200}}></View>
 
-          <View style={{margin: 10}}>
-            <Button title="Retrieve connected peripherals" onPress={() => retrieveConnected() } />
-          </View>
+      {/* Title */}
+      <View style={styles.rowView}>
+        <Text style={styles.titleText}>BLE Example</Text>
+      </View>
 
-          {(list.length == 0) &&
-            <View style={{flex:1, margin: 20}}>
-              <Text style={{textAlign: 'center'}}>No peripherals</Text>
-            </View>
-          }
-        
-        </View>              
-      </ScrollView>
-      <FlatList
-          data={list}
-          renderItem={({ item }) => renderItem(item) }
-          keyExtractor={item => item.id}
-        />              
-    </SafeAreaView>
-  </>
+      <View style={{paddingBottom: 20}}></View>
+
+      {/* Connect Button */}
+      <View style={styles.rowView}>
+        <TouchableOpacity style={{width: 120}}>
+          {!isConnected ? (
+            <Button
+              title="Connect"
+              onPress={() => {
+                scanDevices();
+              }}
+              disabled={false}
+            />
+          ) : (
+            <Button
+              title="Disonnect"
+              onPress={() => {
+                disconnectDevice();
+              }}
+              disabled={false}
+            />
+          )}
+        </TouchableOpacity>
+      </View>
+
+      <View style={{paddingBottom: 20}}></View>
+
+      {/* Monitored Value */}
+
+      <View style={styles.rowView}>
+        <Text style={styles.baseText}>{message}</Text>
+      </View>
+
+      <View style={{paddingBottom: 20}}></View>
+
+    </View>
   );
 };
 
-const styles = StyleSheet.create({
-  scrollView: {
-    backgroundColor: Colors.lighter,
+export const styles = StyleSheet.create({
+  baseText: {
+    fontSize: 15,
+    fontFamily: 'Cochin',
   },
-  engine: {
-    position: 'absolute',
-    right: 0,
+  titleText: {
+    fontSize: 20,
+    fontWeight: 'bold',
   },
-  body: {
-    backgroundColor: Colors.white,
-  },
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: Colors.black,
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-    color: Colors.dark,
-  },
-  highlight: {
-    fontWeight: '700',
-  },
-  footer: {
-    color: Colors.dark,
-    fontSize: 12,
-    fontWeight: '600',
-    padding: 4,
-    paddingRight: 12,
-    textAlign: 'right',
+  rowView: {
+    justifyContent: 'space-around',
+    alignItems: 'flex-start',
+    flexDirection: 'row',
   },
 });
 
