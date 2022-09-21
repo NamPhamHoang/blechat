@@ -36,17 +36,7 @@ const bleManagerEmitter = new NativeEventEmitter(BleManagerModule);
 const App: () => Node = () => {
   const [isScanning, setIsScanning] = useState(false)
   const peripherals = new Map();
-  // const peripherals = new Map();
-  const [listMessage, setListMessage] = useState(["123", "435678"])
-  const [text, onChangeText] = useState("Useless Text");
   const [list, setList] = useState([])
-
-  const onAddingMessage = () => {
-    setListMessage([
-      ...listMessage,
-      text
-    ])
-  }
 
   const startScan = () => {
     if (!isScanning) {
@@ -88,7 +78,6 @@ const App: () => Node = () => {
       if (results.length == 0) {
         console.log('No connected peripherals')
       }
-      console.log(results);
       for (var i = 0; i < results.length; i++) {
         var peripheral = results[i];
         peripheral.connected = true;
@@ -191,21 +180,6 @@ const App: () => Node = () => {
   }
 
   return (
-    // <>
-    //   {  
-    //     listMessage.map((l, index) => {
-    //       return (
-    //         <Text key={index}>{l}</Text>
-    //       )
-    //     })
-    //   }
-    //   <TextInput
-    //     style={styles.input}
-    //     onChangeText={onChangeText}
-    //     onBlur={onAddingMessage}
-    //     value={text}
-    //   />
-    // </>
     <>
     <StatusBar barStyle="dark-content" />
     <SafeAreaView>
